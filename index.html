@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AWS Cognito + STS — User Flow</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f0e1a;
+      --surface:   #1a1830;
+      --surface2:  #221f3a;
+      --border:    #2e2a50;
+      --text:      #e8e6f8;
+      --muted:     #8a87b8;
+      --purple:    #7f77dd;
+      --purple-d:  #534ab7;
+      --blue:      #378add;
+      --teal:      #1d9e75;
+      --amber:     #ef9f27;
+      --coral:     #d85a30;
+      --gray:      #888780;
+      --radius:    14px;
+      --font:      'IBM Plex Sans Arabic', system-ui, sans-serif;
+      --mono:      'IBM Plex Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    /* ── Lang toggle ── */
+    .lang-bar {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      padding: 4px;
+      z-index: 100;
+    }
+    .lang-btn {
+      padding: 6px 20px;
+      border-radius: 24px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .lang-btn.active {
+      background: var(--purple-d);
+      color: #fff;
+    }
+
+    /* ── Wrapper ── */
+    .wrapper {
+      width: 100%;
+      max-width: 680px;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      margin-bottom: 36px;
+      margin-top: 56px;
+    }
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 12px;
+      color: var(--purple);
+      margin-bottom: 14px;
+      font-weight: 500;
+    }
+    .header-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--purple);
+      display: inline-block;
+    }
+    .header h1 {
+      font-size: clamp(22px, 4vw, 30px);
+      font-weight: 600;
+      line-height: 1.3;
+      margin-bottom: 8px;
+    }
+    .header p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    /* ── Progress ── */
+    .progress-track {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin-bottom: 28px;
+    }
+    .pdot {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600;
+      transition: all .3s;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+    .pdot.idle   { background: var(--surface2); color: var(--muted); border: 1.5px solid var(--border); }
+    .pdot.active { color: #fff; transform: scale(1.18); box-shadow: 0 0 0 4px rgba(127,119,221,.18); }
+    .pdot.done   { color: #fff; }
+    .pline {
+      height: 2px;
+      width: 40px;
+      transition: background .4s;
+      flex-shrink: 0;
+    }
+    .pline.done { background: var(--teal); }
+    .pline.idle { background: var(--border); }
+
+    /* ── Step number chip ── */
+    .step-num {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 10px;
+      letter-spacing: .05em;
+      font-family: var(--mono);
+    }
+
+    /* ── Card ── */
+    .card {
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      padding: 30px 28px 24px;
+      background: var(--surface);
+      transition: border-color .3s;
+      position: relative;
+      overflow: hidden;
+      min-height: 240px;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: var(--radius) var(--radius) 0 0;
+      transition: background .3s;
+    }
+
+    .card-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 12px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+      letter-spacing: .03em;
+      border: 1px solid transparent;
+    }
+    .card-title {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .card-body {
+      font-size: 14px;
+      line-height: 1.8;
+      color: var(--muted);
+    }
+    .card-body strong { color: var(--text); font-weight: 500; }
+
+    .card-mono {
+      margin-top: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--purple);
+      direction: ltr;
+      text-align: left;
+      line-height: 1.7;
+    }
+
+    .card-tag {
+      position: absolute;
+      bottom: 16px;
+      right: 20px;
+      font-size: 11px;
+      color: var(--border);
+      font-family: var(--mono);
+      direction: ltr;
+    }
+    html[dir="ltr"] .card-tag { right: auto; left: 20px; }
+
+    /* ── Nav ── */
+    .nav-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+      gap: 12px;
+    }
+    .nav-btn {
+      padding: 10px 24px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .nav-btn:hover:not(:disabled) { border-color: var(--purple); color: var(--purple); }
+    .nav-btn:disabled { opacity: .28; cursor: default; }
+    .nav-btn.primary {
+      background: var(--purple-d);
+      border-color: var(--purple-d);
+      color: #fff;
+    }
+    .nav-btn.primary:hover:not(:disabled) { background: #3c3489; border-color: #3c3489; }
+    .nav-counter {
+      font-size: 12px;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+
+    /* ── Colour accents per step ── */
+    .s0 { --acc: var(--gray);    --acc-bg: rgba(136,135,128,.12); }
+    .s1 { --acc: var(--blue);    --acc-bg: rgba(55,138,221,.12);  }
+    .s2 { --acc: var(--coral);   --acc-bg: rgba(216,90,48,.12);   }
+    .s3 { --acc: var(--teal);    --acc-bg: rgba(29,158,117,.12);  }
+    .s4 { --acc: var(--purple);  --acc-bg: rgba(127,119,221,.12); }
+    .s5 { --acc: var(--amber);   --acc-bg: rgba(239,159,39,.12);  }
+
+    .card.colored { border-color: var(--acc); background: var(--acc-bg); }
+    .card.colored::before { background: var(--acc); }
+    .card-badge.colored { color: var(--acc); border-color: var(--acc); background: rgba(0,0,0,.25); }
+    .card-title.colored { color: var(--acc); }
+    .pdot.active { background: var(--acc) !important; }
+    .pdot.done   { background: var(--teal); }
+
+    /* RTL / LTR swap */
+    html[dir="ltr"] body { direction: ltr; }
+    html[dir="ltr"] .card-mono { direction: ltr; text-align: left; }
+
+    @media (max-width: 480px) {
+      .pline { width: 24px; }
+      .pdot  { width: 26px; height: 26px; font-size: 11px; }
+      .card  { padding: 22px 18px 20px; }
+      .card-title { font-size: 17px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Lang toggle -->
+<div class="lang-bar">
+  <button class="lang-btn active" id="btn-ar" onclick="setLang('ar')">العربية</button>
+  <button class="lang-btn"        id="btn-en" onclick="setLang('en')">English</button>
+</div>
+
+<div class="wrapper">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-badge" id="hdr-badge">تدفق المستخدم</div>
+    <h1 id="hdr-title">AWS Cognito + STS</h1>
+    <p id="hdr-sub">ست خطوات من تسجيل الدخول إلى الوصول الآمن لخدمات AWS</p>
+  </div>
+
+  <!-- Progress dots -->
+  <div class="progress-track" id="prog"></div>
+
+  <!-- Step number -->
+  <div class="step-num" id="step-num"></div>
+
+  <!-- Card -->
+  <div class="card" id="card"></div>
+
+  <!-- Nav -->
+  <div class="nav-row">
+    <button class="nav-btn primary" id="nextBtn">←</button>
+    <span class="nav-counter" id="counter"></span>
+    <button class="nav-btn" id="prevBtn">→</button>
+  </div>
+</div>
+
+<script>
+const steps = [
+  {
+    ar: {
+      badge: "البداية",
+      title: "المستخدم يفتح التطبيق",
+      body: `المستخدم يضغط على زر <strong>"تسجيل الدخول"</strong> في التطبيق — سواء كان موبايل أو ويب.<br><br>التطبيق لا يحتوي على أي مفاتيح AWS في الكود. لا يوجد <code>AWS_ACCESS_KEY_ID</code> ثابت. هذا هو المبدأ الأساسي للأمان.`,
+    },
+    en: {
+      badge: "Start",
+      title: "User opens the app",
+      body: `User taps <strong>"Sign In"</strong> in the mobile or web app.<br><br>The app contains <strong>zero hardcoded AWS keys</strong>. No <code>AWS_ACCESS_KEY_ID</code> in the source code. This is the fundamental security principle.`,
+    },
+    tag: "User · Browser / Mobile App",
+    mono: null,
+    cls: "s0"
+  },
+  {
+    ar: {
+      badge: "المصادقة — AuthN",
+      title: "Cognito User Pool يتحقق من الهوية",
+      body: `المستخدم يُدخل بريده وكلمة المرور. Cognito يتحقق من البيانات، يتحقق من <strong>MFA</strong> إن وُجد، ثم يُصدر ثلاثة توكنات JWT:`,
+    },
+    en: {
+      badge: "Authentication — AuthN",
+      title: "Cognito User Pool verifies identity",
+      body: `User enters email and password. Cognito validates credentials, checks <strong>MFA</strong> if enabled, then issues three JWT tokens:`,
+    },
+    tag: "Amazon Cognito User Pool",
+    mono: "ID Token      → من أنت / who you are\nAccess Token  → ما تملك / what you own\nRefresh Token → تجديد الجلسة / renew session",
+    cls: "s1"
+  },
+  {
+    ar: {
+      badge: "موفّر خارجي — اختياري",
+      title: "تسجيل الدخول عبر Google / SAML / OIDC",
+      body: `إذا اختار المستخدم <strong>"الدخول عبر Google"</strong> أو حساب شركة — يُعيد التوجيه للموفّر الخارجي.<br><br>الموفّر يُصادق المستخدم ويُرجع توكناً. Cognito يتحقق منه ويُصدر <strong>JWT موحّد</strong> كأي مستخدم عادي.`,
+    },
+    en: {
+      badge: "External IdP — Optional",
+      title: "Sign in via Google / SAML / OIDC",
+      body: `If user picks <strong>"Sign in with Google"</strong> or a corporate SSO — app redirects to that provider.<br><br>The provider authenticates and returns a token. Cognito validates it and issues a <strong>unified JWT</strong> just like a regular user.`,
+    },
+    tag: "Google · Facebook · SAML · OIDC → Cognito",
+    mono: null,
+    cls: "s2"
+  },
+  {
+    ar: {
+      badge: "التفويض — AuthZ",
+      title: "Identity Pool يُحدد دور IAM",
+      body: `الـ <strong>ID Token</strong> يُرسل إلى Cognito Identity Pool.<br><br>هنا يحدث السحر — Identity Pool يفحص التوكن ويُقرر أي دور IAM يُعطى للمستخدم:`,
+    },
+    en: {
+      badge: "Authorization — AuthZ",
+      title: "Identity Pool maps to IAM role",
+      body: `The <strong>ID Token</strong> is sent to Cognito Identity Pool.<br><br>This is where the magic happens — Identity Pool inspects the token and decides which IAM role to assign:`,
+    },
+    tag: "Cognito Identity Pool → IAM Role",
+    mono: "مسجّل    / Authenticated → role: arn:aws:iam::...:role/AppUser\nضيف     / Guest         → role: arn:aws:iam::...:role/GuestUser\nأدمن    / Admin         → role: arn:aws:iam::...:role/AdminUser",
+    cls: "s3"
+  },
+  {
+    ar: {
+      badge: "الاعتماد المؤقت",
+      title: "AWS STS يُصدر بيانات اعتماد مؤقتة",
+      body: `Identity Pool يستدعي <code>STS.AssumeRoleWithWebIdentity</code> تلقائياً.<br><br>STS يُرجع <strong>ثلاثة عناصر مؤقتة</strong> تنتهي صلاحيتها تلقائياً بين 15 دقيقة و12 ساعة — لا مفاتيح دائمة أبداً.`,
+    },
+    en: {
+      badge: "Temporary Credentials",
+      title: "AWS STS issues short-lived credentials",
+      body: `Identity Pool automatically calls <code>STS.AssumeRoleWithWebIdentity</code>.<br><br>STS returns <strong>three temporary values</strong> that self-expire between 15 minutes and 12 hours — zero permanent keys, ever.`,
+    },
+    tag: "AWS STS · AssumeRoleWithWebIdentity",
+    mono: "AccessKeyId     = ASIA...xyz\nSecretAccessKey = wJalr...abc\nSessionToken    = FQoGZXIvY... (expires in TTL)",
+    cls: "s4"
+  },
+  {
+    ar: {
+      badge: "الوصول الآمن",
+      title: "المستخدم يصل لخدمات AWS مباشرةً",
+      body: `التطبيق يستخدم بيانات الاعتماد المؤقتة للوصول المباشر لخدمات AWS بناءً على صلاحيات دور IAM المُحدد.<br><br>عند انتهاء الصلاحية — التطبيق يطلب <strong>تجديداً تلقائياً</strong> بدون أي تدخل من المستخدم.`,
+    },
+    en: {
+      badge: "Secure Access",
+      title: "User accesses AWS services directly",
+      body: `The app uses temporary credentials to directly call AWS services — scoped precisely to the IAM role's permissions.<br><br>When credentials expire — the app <strong>auto-renews</strong> silently with no user interruption.`,
+    },
+    tag: "S3 · DynamoDB · API Gateway · Lambda · ...",
+    mono: "s3.getObject({ Bucket: 'my-bucket', Key: 'file.pdf' })\ndynamoDB.putItem({ TableName: 'Users', Item: {...} })\napigw.invoke({ method: 'GET', path: '/orders' })",
+    cls: "s5"
+  }
+];
+
+let cur = 0;
+let lang = 'ar';
+
+const labels = {
+  ar: { prev: '→ السابق', next: 'التالي ←', restart: '↺ من البداية', step: 'الخطوة', of: 'من', badge: 'تدفق المستخدم', sub: 'ست خطوات من تسجيل الدخول إلى الوصول الآمن لخدمات AWS' },
+  en: { prev: '← Back',   next: 'Next →',   restart: '↺ Restart',     step: 'Step',    of: 'of', badge: 'User Flow',       sub: 'Six steps from sign-in to secure AWS service access' }
+};
+
+function render() {
+  const s = steps[cur];
+  const L = labels[lang];
+  const t = s[lang];
+
+  // progress
+  const prog = document.getElementById('prog');
+  prog.innerHTML = steps.map((st, i) => {
+    let cls = i < cur ? 'done' : i === cur ? `active ${st.cls}` : 'idle';
+    const dot = `<div class="pdot ${cls}" style="${i === cur ? '--acc:var(--'+st.cls.replace('s0','gray').replace('s1','blue').replace('s2','coral').replace('s3','teal').replace('s4','purple').replace('s5','amber')+')' : ''}">${i+1}</div>`;
+    const line = i < steps.length-1 ? `<div class="pline ${i < cur ? 'done' : 'idle'}"></div>` : '';
+    return dot + line;
+  }).join('');
+
+  // Re-apply active dot color properly
+  document.querySelectorAll('.pdot.active').forEach(d => {
+    const colors = ['var(--gray)','var(--blue)','var(--coral)','var(--teal)','var(--purple)','var(--amber)'];
+    d.style.background = colors[cur];
+  });
+
+  // step num
+  document.getElementById('step-num').textContent = `${L.step} ${cur+1} ${L.of} ${steps.length}`;
+
+  // card
+  const card = document.getElementById('card');
+  card.className = `card colored ${s.cls}`;
+  card.innerHTML = `
+    <div class="card-badge colored">${t.badge}</div>
+    <div class="card-title colored">${t.title}</div>
+    <div class="card-body">${t.body}</div>
+    ${s.mono ? `<div class="card-mono">${s.mono}</div>` : ''}
+    <div class="card-tag">${s.tag}</div>
+  `;
+
+  // header
+  document.getElementById('hdr-badge').textContent = L.badge;
+  document.getElementById('hdr-sub').textContent = L.sub;
+
+  // nav
+  document.getElementById('counter').textContent = `${cur+1} / ${steps.length}`;
+  const prev = document.getElementById('prevBtn');
+  const next = document.getElementById('nextBtn');
+  prev.textContent = L.prev;
+  prev.disabled = cur === 0;
+  if (cur === steps.length - 1) {
+    next.textContent = L.restart;
+    next.onclick = () => { cur = 0; render(); };
+  } else {
+    next.textContent = L.next;
+    next.onclick = () => { cur = Math.min(steps.length-1, cur+1); render(); };
+  }
+}
+
+document.getElementById('prevBtn').onclick = () => { cur = Math.max(0, cur-1); render(); };
+
+function setLang(l) {
+  lang = l;
+  document.documentElement.lang = l;
+  document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+  document.getElementById('btn-ar').classList.toggle('active', l === 'ar');
+  document.getElementById('btn-en').classList.toggle('active', l === 'en');
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
